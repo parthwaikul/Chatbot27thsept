@@ -1,0 +1,30 @@
+sources:
+  - source_id: hdfc_large_cap_direct_growth
+    url: https://groww.in/mutual-funds/hdfc-large-cap-fund-direct-growth
+    scheme: HDFC Large Cap Fund - Direct Growth
+    category: large_cap
+    plan_variant: direct_growth
+
+  - source_id: hdfc_equity_flexi_cap
+    url: https://groww.in/mutual-funds/hdfc-equity-fund-direct-growth
+    scheme: HDFC Equity Fund - Direct Growth
+    category: flexi_cap
+    plan_variant: direct_growth
+
+  - source_id: hdfc_elss_tax_saver
+    url: https://groww.in/mutual-funds/hdfc-elss-tax-saver-fund-direct-plan-growth
+    scheme: HDFC ELSS Tax Saver Fund - Direct Plan - Growth
+    category: elss
+    plan_variant: direct_growth
+
+  - source_id: hdfc_small_cap
+    url: https://groww.in/mutual-funds/hdfc-small-cap-fund-direct-growth
+    scheme: HDFC Small Cap Fund - Direct Growth
+    category: small_cap
+    plan_variant: direct_growth
+
+  - source_id: hdfc_balanced_advantage
+    url: https://groww.in/mutual-funds/hdfc-balanced-advantage-fund-direct-growth
+    scheme: HDFC Balanced Advantage Fund - Direct Growth
+    category: balanced_advantage
+    plan_variant: direct_growth
