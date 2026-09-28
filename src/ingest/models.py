@@ -23,6 +23,11 @@ FACT_TYPES: Tuple[str, ...] = (
     "general",
 )
 
+#: Heading of the whitelisted-facts block that the loader puts at the head of
+#: every scheme document. Shared so the loader and the chunker agree on which
+#: section is the facts block.
+FACT_SECTION_HEADING: str = "Scheme facts (as published on the scheme page)"
+
 REQUIRED_CHUNK_METADATA: Tuple[str, ...] = (
     "source_url",
     "scheme",

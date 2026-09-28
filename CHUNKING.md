@@ -145,6 +145,39 @@ inspection patterns, defaulting to `general`.
 4. Two consecutive ingestions leave the ChromaDB count unchanged (E-8).
 5. A deliberate `content_hash` change rewrites only the affected chunks.
 
+### Results (Phase 2, run against the five live sources)
+
+| Check | Result |
+|-------|--------|
+| Chunk count | **166** (large cap 31, flexi cap 31, ELSS 30, small cap 31, balanced advantage 38) |
+| Atomic / split | 112 atomic fact chunks, 54 split parts |
+| Size | min 14, median 217, p90 1196, max **1200** — **0 chunks over `CHUNK_SIZE`** |
+| Undersized page chunks | **0**; the 36 sub-60-char chunks are all atomic fact rows, which rule 2 forbids merging |
+| Fact rows truncated | **0** — every `Label: value` row appears whole, once, and still matches `corpus/raw/` |
+| Fee percentages keeping their conditions | all — e.g. `1% if redeemed within 1 year`, `0.005% (from July 1st, 2020)` |
+| C-3 leak scan over `chunks.txt` | **0** matches for CAGR, annualised, `1D 1M 6M`, absolute returns, NAV |
+| Second full run | `ingested 0 / unchanged 5 / rewritten 0`, store stayed at 166 (E-8 proven) |
+| Vectors | all 384-dim, `normalize_embeddings=True` |
+
+One percentage deserves a note so nobody deletes it later:
+`returns exceeding Rs 1.25 lakh in a financial year are taxed at 12.5%` is a **capital-gains tax
+slab** from the Tax implication section, not a performance claim, and it is the answer to the ELSS
+lock-in question. Every other percentage in the corpus is a fee, tax or ratio fact.
+
+The `Fund house` section behaved exactly as Finding 2 predicted: 7,439 chars became 8 parts of
+≤1200 chars, each repeating the heading, each carrying 150 chars of overlap — verified by
+confirming the last line of part *n* reappears in part *n+1*.
+
+### Change-detection design note
+
+Change detection reads `corpus/embedded.json`, **not** `corpus/sources.csv`. On `--stage all` the
+load stage rewrites `sources.csv` before the pipeline runs in the same invocation, so comparing
+against it would mean every hash always matched and a genuine page change would never be detected.
+`embedded.json` records `{source_id: {content_hash, chunk_ids}}` for what is actually in the store,
+which also makes orphan deletion exact: a chunk id a source no longer produces is deleted rather
+than left behind. If the collection is empty — because `chroma/` is gitignored and was wiped — the
+run is forced to re-ingest instead of reporting a false no-op.
+
 ---
 
 ## 4. Corpus gap found during inspection — blocks one of the seven required query types
@@ -179,7 +212,8 @@ Rules for whoever resolves this:
 
 | Item | Status |
 |------|--------|
-| `CHUNK_SIZE` / `CHUNK_OVERLAP` / `CHUNK_STRATEGY` in `.env` | to be set from §2 during P2 |
+| `CHUNK_SIZE` / `CHUNK_OVERLAP` / `CHUNK_STRATEGY` | **done in P2** — set to 1200 / 150 / `section_atomic_recursive` in `.env` and `.env.example`; `chunker.py` reads them from config and a test asserts they still match §2, so the table above cannot go stale |
 | Riskometer vs star-rating conflict (Finding 5) | answer the riskometer only; note in README known limits |
 | `RETRIEVAL_TOP_K`, `SIMILARITY_FLOOR` (Q3) | to be tuned during P3 from the observed score separation, then appended to this file under "Retrieval tuning" |
 | Corpus reflects sources as of the ingestion date | note in README known limits (NFR-8) |
+| Holdings inside the `Fund house` blob | names only, no weights, because the loader splits on headings down to h4 and this content sits below that. Answers about "top holdings" are therefore out of scope until an official holdings source is added; the `RelevanceGate` should decline them rather than quote an unweighted list |

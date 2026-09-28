@@ -30,6 +30,7 @@ from bs4 import BeautifulSoup
 
 from src.config import Settings
 from src.ingest.models import (
+    FACT_SECTION_HEADING,
     DocumentSection,
     LoadReport,
     SourceRecord,
@@ -140,7 +141,6 @@ FACT_FIELDS: Dict[str, str] = {
     "isin": "ISIN",
 }
 
-_FACT_SECTION_HEADING = "Scheme facts (as published on the scheme page)"
 PREAMBLE_HEADING = "(page preamble)"
 _HEADING_MARK = "\ue000"
 _NUMBER_RE = re.compile(r"^[\d,]+$")
@@ -416,6 +416,18 @@ def extract(html: str, drop_preamble: bool = True) -> Extraction:
     sections = _split_sections(body)
 
     kept: List[DocumentSection] = []
+    if facts:
+        # The facts block leads the document, so it is section 0. Keeping it as a
+        # real section (rather than text-only) means `text` is exactly the
+        # concatenation of `sections`, which is what lets the chunker address it
+        # and keeps fact offsets attributed to the right heading.
+        kept.append(
+            DocumentSection(
+                heading=FACT_SECTION_HEADING,
+                text=normalise_text("\n".join(f"{k}: {v}" for k, v in facts.items())),
+                ordinal=0,
+            )
+        )
     for section in sections:
         if section.heading == PREAMBLE_HEADING and drop_preamble:
             stats.preamble_chars_dropped += len(section.text)
@@ -431,16 +443,9 @@ def extract(html: str, drop_preamble: bool = True) -> Extraction:
             DocumentSection(heading=section.heading, text=content, ordinal=len(kept))
         )
 
-    blocks: List[str] = []
-    if facts:
-        blocks.append(
-            f"{_FACT_SECTION_HEADING}\n" + "\n".join(f"{k}: {v}" for k, v in facts.items())
-        )
-    for section in kept:
-        if section.text.strip():
-            blocks.append(f"{section.heading}\n{section.text}")
-
-    text = normalise_text("\n\n".join(blocks))
+    text = normalise_text(
+        "\n\n".join(f"{s.heading}\n{s.text}" for s in kept if s.text.strip())
+    )
     stats.visible_chars = len(text)
     return Extraction(text=text, sections=tuple(kept), stats=stats)
 
