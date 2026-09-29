@@ -137,3 +137,22 @@ class VectorStore:
                 found["ids"], found.get("documents") or [], found.get("metadatas") or []
             )
         }
+
+    def vectors_for(self, chunk_ids: Sequence[str]) -> Dict[str, List[float]]:
+        """Read the stored vectors back by chunk id.
+
+        Used to write the embedding of each chunk into ``chunks.txt`` from the
+        vectors that are actually persisted, so the dump and the collection can
+        never disagree.
+        """
+        if not chunk_ids:
+            return {}
+        found = self._collection.get(ids=list(chunk_ids), include=["embeddings"])
+        embeddings = found.get("embeddings")
+        if embeddings is None:
+            return {}
+        return {
+            chunk_id: [float(value) for value in embedding]
+            for chunk_id, embedding in zip(found["ids"], embeddings)
+            if embedding is not None
+        }

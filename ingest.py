@@ -126,6 +126,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 embeddings=service,
                 force=args.force,
                 write_files=True,
+                embed=args.stage not in ("chunk",),
             )
         except (ConfigError, EmbeddingError, VectorStoreError, ValueError) as exc:
             print(f"pipeline error: {exc}", file=sys.stderr)
@@ -133,7 +134,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if args.stage == "chunk":
             print(f"wrote {settings.chunks_txt_path} ({pipeline_report.chunks} chunks)")
             print(f"wrote {settings.chunks_jsonl_path}")
-            print("skipped embed and store (--stage chunk)")
+            if pipeline_report.embedded < pipeline_report.chunks:
+                print(
+                    f"  note: {pipeline_report.chunks - pipeline_report.embedded} chunk(s) "
+                    "have no vector because the store is empty; run --stage all for a "
+                    "complete dump"
+                )
+            print("embed and store skipped (--stage chunk)")
         else:
             print("")
             print(pipeline_report.line())

@@ -55,12 +55,14 @@ class PipelineReport:
     deleted: int = 0
     chunks: int = 0
     vectors: int = 0
+    embedded: int = 0
     store_count: int = 0
 
     def line(self) -> str:
         return (
             f"ingested {len(self.ingested)} / unchanged {len(self.unchanged)} / "
             f"rewritten {len(self.rewritten)} | chunks {self.chunks} "
+            f"(with embedding {self.embedded}) "
             f"| deleted {self.deleted} | store {self.store_count}"
         )
 
@@ -134,6 +136,32 @@ def _select(
     return pending, unchanged
 
 
+def _write_dumps(
+    settings: Settings,
+    chunks: Sequence[Chunk],
+    target: Optional[VectorStore],
+    report: PipelineReport,
+) -> None:
+    """Write ``chunks.txt`` / ``chunks.jsonl``, with each chunk's stored vector.
+
+    The vectors are read back from the collection rather than taken from the
+    in-memory batch, so the dump always shows what retrieval will actually
+    search. Chunks the store does not hold yet are written without a vector and
+    say so inline.
+    """
+    if not chunks:
+        write_chunks(chunks, settings.chunks_txt_path, settings.chunks_jsonl_path)
+        return
+    vectors: Dict[str, Sequence[float]] = {}
+    if target is not None:
+        vectors = target.vectors_for([chunk.chunk_id for chunk in chunks])
+    written = write_chunks(
+        chunks, settings.chunks_txt_path, settings.chunks_jsonl_path, vectors=vectors
+    )
+    report.chunks = written["count"]
+    report.embedded = written["embedded"]
+
+
 def run_pipeline(
     records: Sequence[SourceRecord],
     settings: Optional[Settings] = None,
@@ -142,8 +170,13 @@ def run_pipeline(
     chunker: Optional[ChunkStrategy] = None,
     force: bool = False,
     write_files: bool = True,
+    embed: bool = True,
 ) -> PipelineReport:
-    """Chunk, embed and store the given records, skipping unchanged sources."""
+    """Chunk, embed and store the given records, skipping unchanged sources.
+
+    ``embed=False`` runs the chunker and writes the dumps without touching the
+    embedding service or the collection, which is what ``--stage chunk`` means.
+    """
     settings = settings or load()
     report = PipelineReport()
     target = store if store is not None else VectorStore(chroma_dir=settings.chroma_dir)
@@ -154,8 +187,10 @@ def run_pipeline(
         all_chunks.extend(strategy.split(record))
     report.chunks = len(all_chunks)
 
-    if write_files:
-        write_chunks(all_chunks, settings.chunks_txt_path, settings.chunks_jsonl_path)
+    if not embed:
+        if write_files:
+            _write_dumps(settings, all_chunks, target, report)
+        return report
 
     known = read_embed_index(settings)
     is_initial = known is None
@@ -173,6 +208,8 @@ def run_pipeline(
         (report.ingested if is_initial else report.rewritten).append(record.source_id)
 
     if not pending:
+        if write_files:
+            _write_dumps(settings, all_chunks, target, report)
         report.store_count = target.count()
         return report
 
@@ -202,6 +239,8 @@ def run_pipeline(
 
     target.upsert_chunks(touched, vectors)
     write_embed_index(settings, records, all_chunks)
+    if write_files:
+        _write_dumps(settings, all_chunks, target, report)
     report.vectors = len(vectors)
     report.store_count = target.count()
     return report
