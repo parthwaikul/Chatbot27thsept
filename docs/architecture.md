@@ -406,6 +406,7 @@ downstream component changes when Q4 is decided.
 | `GROQ_MODEL` | K14 | configurable | Groq model id; the brief fixes the provider, not the model. |
 | `GROQ_TEMPERATURE` | K14 | lowest supported | NFR-3. |
 | `GROQ_TIMEOUT_S` / `GROQ_MAX_RETRIES` | K14 | 30 / 2 | Keeps a rate-limited demo responsive (NFR-4). |
+| `GROQ_MAX_TOKENS` | K14 | `300` | Generation ceiling. An answer is ≤3 sentences plus one URL and the freshness line, so this is generous; it bounds runaway output, it does not shape the answer. |
 | `EMBEDDING_MODEL` | K6 | `sentence-transformers/all-MiniLM-L6-v2` | TC-1. Must not be changed without re-ingesting (E-8). |
 | `EMBEDDING_DIM` | K6 | `384` | Asserted at startup; mismatch aborts. |
 | `CHROMA_DIR` | K7 | `./chroma` | TC-3. |

@@ -1,0 +1,118 @@
+DISCLAIMER.txt — deliverable D-5 (FR-20)
+
+Every user-facing message the assistant can show, copied from
+src/guardrails/messages.py by `python scripts/gen_disclaimer.py`. This file is
+generated, not maintained by hand, so it cannot drift from what the product
+actually renders.
+
+Read the first section as the answer to the brief's requirement: that snippet is
+the disclaimer, and it appears on every single response — answers, refusals and
+error states alike.
+
+==============================================================================
+
+## Disclaimer
+
+*Shown on every response — FR-20, C-4*
+
+```text
+Facts-only. No investment advice.
+```
+
+## Freshness line
+
+*Shown on every response — FR-14, C-4*
+
+```text
+Last updated from sources:
+```
+
+## Personal identifiers (K9 screen)
+
+*Refusals — FR-10, FR-11, C-2, C-3*
+
+```text
+I can't help with that. This assistant does not accept, store, or share personal identifiers such as PAN, Aadhaar, account numbers, OTPs, email addresses, or phone numbers. Please don't share them here.
+```
+
+## Advice and opinion
+
+*Refusals — FR-10, FR-11, C-2, C-3*
+
+```text
+I answer factual questions only, so I can't tell you whether to buy, sell, or hold a scheme, or which one is better for you. Facts such as expense ratio, exit load, minimum SIP, lock-in, riskometer, and benchmark are in the sources I use.
+```
+
+## Returns and performance
+
+*Refusals — FR-10, FR-11, C-2, C-3*
+
+```text
+I don't state, compare, or calculate returns or performance. The official monthly factsheet publishes those figures.
+```
+
+## Not in sources
+
+*Refusals — FR-10, FR-11, C-2, C-3*
+
+```text
+I couldn't answer that from the sources I'm limited to. I only answer questions about the five HDFC scheme pages in my sources.
+```
+
+## Ambiguous question (K10)
+
+*Refusals — FR-10, FR-11, C-2, C-3*
+
+```text
+Which scheme do you mean? I have these five HDFC schemes:
+
+    1. HDFC Large Cap Fund - Direct Growth
+    (…five schemes listed…)
+Ask me about a specific one and I'll give the facts from its page.
+```
+
+## Answer rejected by K15
+
+*Refusals — FR-10, FR-11, C-2, C-3*
+
+```text
+I couldn't produce an answer I could stand behind from the sources I'm limited to, so I'm not going to guess.
+```
+
+## Answer service unreachable
+
+*Failure states — NFR-4*
+
+```text
+I couldn't reach the answer service just now. Please try again in a moment.
+```
+
+## Unexpected failure
+
+*Failure states — NFR-4*
+
+```text
+Something went wrong on my side and I couldn't produce an answer. Please try rephrasing your question.
+```
+
+==============================================================================
+
+## Links attached to a refusal
+
+A refusal never leaves the user at a dead end: the message is followed by one link,
+chosen by what was refused.
+
+| Refusal | Link |
+|---------|------|
+| Advice / opinion (FR-10) | https://investor.sebi.gov.in/ |
+| Personal identifiers (C-2) | none — there is nothing to link a person to |
+| Returns / performance (FR-11) | the scheme's official monthly factsheet, from `FACTSHEET_LINK_MAP` |
+| Not in sources | https://investor.sebi.gov.in/ |
+
+## Why the wording is fixed
+
+These strings are pinned by `tests/test_validator.py` and by the eval harness, which
+asserts that a refusal is produced rather than an answer. A refusal is a product
+feature, not an error message: the assistant's value is that it says "that figure is
+not in my sources, here is where to read it" instead of guessing. Rewording one of
+these without updating the tests is how that guarantee quietly stops being true.

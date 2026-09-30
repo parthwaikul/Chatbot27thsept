@@ -97,11 +97,21 @@ def _env_factsheet_map() -> Optional[Dict[str, str]]:
 class Settings:
     """Immutable view of every configuration value used by the pipeline."""
 
-    groq_api_key: Optional[str] = None
+    #: ``repr=False`` is a security control, not a style choice. A dataclass
+    #: repr is printed by pytest on any assertion failure, by Streamlit in a
+    #: traceback, and by the REPL on any error — so the default repr would put a
+    #: live API key into test output and log files, which is precisely what
+    #: NFR-2 and NFR-4 forbid. ``__str__`` gives the same protection for str(),
+    #: and a test asserts that neither repr nor str contains the key.
+    groq_api_key: Optional[str] = field(default=None, repr=False)
     groq_model: Optional[str] = None
     groq_temperature: float = 0.0
     groq_timeout_s: int = 30
     groq_max_retries: int = 2
+    #: Ceiling on generation. An answer is <=3 sentences plus one URL and the
+    #: freshness line (FR-13, C-4), so 300 tokens is generous; the cap exists to
+    #: stop a runaway generation, not to shape the answer.
+    groq_max_tokens: int = 300
 
     embedding_model: str = DEFAULT_EMBEDDING_MODEL
     embedding_dim: int = DEFAULT_EMBEDDING_DIM
@@ -114,6 +124,8 @@ class Settings:
     sources_csv_path: Path = field(default_factory=lambda: Path("./corpus/sources.csv"))
     chunks_txt_path: Path = field(default_factory=lambda: Path("./chunks.txt"))
     chunks_jsonl_path: Path = field(default_factory=lambda: Path("./chunks.jsonl"))
+    sources_md_path: Path = field(default_factory=lambda: Path("./SOURCES.md"))
+    sample_qa_path: Path = field(default_factory=lambda: Path("./SAMPLE_QA.md"))
     logs_dir: Path = field(default_factory=lambda: Path("./logs"))
 
     chunk_size: Optional[int] = None
@@ -153,6 +165,23 @@ class Settings:
         """Names of PENDING settings that are still unset, in declaration order."""
         return [name for name in PENDING if getattr(self, name, None) is None]
 
+    def __str__(self) -> str:
+        """Same redaction as the repr, for f-strings and log records.
+
+        ``log.info("settings=%s", settings)`` reaches ``__str__``, not
+        ``__repr__``, so suppressing the key in only the repr would leave the
+        commonest logging call still leaking it.
+        """
+        return self.__repr__()
+
+    def has_api_key(self) -> bool:
+        """Whether a key is configured, without exposing it.
+
+        NFR-4's failure messages need exactly this: "no key" is reportable, the
+        key itself never is.
+        """
+        return bool((self.groq_api_key or "").strip())
+
 
 def load(dotenv_path: Optional[Path] = None) -> Settings:
     """Load settings from `.env` then the process environment."""
@@ -172,6 +201,7 @@ def load(dotenv_path: Optional[Path] = None) -> Settings:
         groq_temperature=_env_float("GROQ_TEMPERATURE", 0.0),
         groq_timeout_s=_env_int("GROQ_TIMEOUT_S", 30),
         groq_max_retries=_env_int("GROQ_MAX_RETRIES", 2),
+        groq_max_tokens=_env_int("GROQ_MAX_TOKENS", 300),
         embedding_model=_env_str("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL),
         embedding_dim=embedding_dim,
         chroma_dir=_env_path("CHROMA_DIR", "./chroma"),
@@ -181,6 +211,8 @@ def load(dotenv_path: Optional[Path] = None) -> Settings:
         sources_csv_path=_env_path("SOURCES_CSV", "./corpus/sources.csv"),
         chunks_txt_path=_env_path("CHUNKS_TXT", "./chunks.txt"),
         chunks_jsonl_path=_env_path("CHUNKS_JSONL", "./chunks.jsonl"),
+        sources_md_path=_env_path("SOURCES_MD", "./SOURCES.md"),
+        sample_qa_path=_env_path("SAMPLE_QA", "./SAMPLE_QA.md"),
         logs_dir=_env_path("LOGS_DIR", "./logs"),
         chunk_size=None if _env("CHUNK_SIZE") is None else _env_int("CHUNK_SIZE", 0),
         chunk_overlap=None if _env("CHUNK_OVERLAP") is None else _env_int("CHUNK_OVERLAP", 0),
