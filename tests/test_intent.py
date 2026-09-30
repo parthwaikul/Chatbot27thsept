@@ -22,6 +22,7 @@ from src.eval.cases import (
 )
 from src.guardrails.intent import (
     CATEGORIES,
+    FACT_ATTRIBUTES,
     SCHEME_INDEPENDENT_FACT_TYPES,
     TERMINAL_CATEGORIES,
     IntentRouterError,
@@ -182,6 +183,78 @@ def test_a_bare_mention_of_the_amc_is_not_a_scheme_name():
     """
     result = route("What is the minimum SIP amount for HDFC?")
     assert result.category == "AMBIGUOUS"
+
+
+# -- fund size and AUM are attributes, not performance ------------------------
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What is the fund size of HDFC Large Cap Fund Direct Growth?",
+        "What is the AUM of HDFC Small Cap Fund Direct Growth?",
+        "What are the assets under management of HDFC Balanced Advantage Fund?",
+        "Who is the fund manager for HDFC Large Cap Fund Direct Growth?",
+    ],
+)
+def test_fund_size_and_aum_route_to_fact(question):
+    """A fund's size on a date is stated on its own page, so RAG can answer it.
+
+    "aum" and "fund size" were PERFORMANCE triggers, which sent the first of
+    these to the C-3 factsheet redirect: the user was told to go and read a PDF
+    for a number the indexed corpus already contained, on a question that has
+    nothing to do with returns.
+    """
+    result = route(question)
+    assert result.category == "FACT"
+    # No FR-8 fact type covers these, and none was invented for them: K12 then
+    # checks the score floor alone instead of a fact-type filter.
+    assert result.expected_fact_type is None
+    assert result.intent.names_scheme
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What is the fund size?",
+        "What is the AUM?",
+        "Who is the fund manager?",
+    ],
+)
+def test_a_fund_attribute_naming_no_scheme_is_ambiguous(question):
+    """Each fund has its own AUM and its own manager, so Q5 must still ask.
+
+    Retrieval across all five would answer with five different numbers, which is
+    the Q5 failure mode, not an answer.
+    """
+    result = route(question)
+    assert result.category == "AMBIGUOUS"
+    assert not result.intent.names_scheme
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What are the returns of HDFC Large Cap Fund?",
+        "What is the CAGR of HDFC Small Cap Fund?",
+        "What is the yield of HDFC Large Cap Fund?",
+        "What is the NAV of HDFC Large Cap Fund?",
+        "What are the top holdings of HDFC Equity Fund Direct Growth?",
+        "What is the portfolio composition?",
+    ],
+)
+def test_performance_still_redirects(question):
+    """Moving the attributes out of PERFORMANCE must not have emptied it."""
+    assert route(question).category == "PERFORMANCE"
+
+
+def test_no_fact_attribute_is_also_a_performance_trigger():
+    """The two lists are disjoint, so an attribute can never be shadowed."""
+    from src.guardrails.intent import PERFORMANCE_KEYWORDS
+
+    haystack = " ".join(FACT_ATTRIBUTES).lower()
+    for trigger in PERFORMANCE_KEYWORDS:
+        assert trigger not in haystack, f"{trigger!r} is in both lists"
 
 
 # -- fact-type detection ------------------------------------------------------

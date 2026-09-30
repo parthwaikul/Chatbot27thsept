@@ -114,6 +114,26 @@ FACT_TYPE_KEYWORDS: Dict[str, Tuple[str, ...]] = {
     ),
 }
 
+#: Factual fund attributes that are *not* one of the seven FR-8 fact types, so
+#: they route to FACT with ``expected_fact_type=None`` and K12 checks the score
+#: floor only. The corpus carries them as ``general`` chunks, and adding a fact
+#: type for them would mean re-chunking and re-embedding the whole collection to
+#: relabel text that is already indexed and already retrievable.
+#:
+#: "aum" and "fund size" were previously PERFORMANCE triggers, which sent
+#: "What is the fund size of HDFC Large Cap Fund Direct Growth?" to the C-3
+#: factsheet redirect. A fund's size on a date is a stated attribute of the
+#: scheme, in the same class as its benchmark or its minimum SIP, and the corpus
+#: answers it exactly; only returns, growth and their relatives belong in the
+#: performance bucket. They are per-scheme facts, so with no scheme named they
+#: take the Q5 clarify path below rather than retrieval across all five.
+FACT_ATTRIBUTES: Tuple[str, ...] = (
+    "fund size",
+    "aum",
+    "assets under management",
+    "fund manager",
+)
+
 #: ADVICE triggers, architecture.md §8.3. Phrased as phrases rather than single
 #: words so a bare "best" in "which benchmark is best" is not a refusal; the
 #: table is matched on word boundaries and multi-word phrases are preferred.
@@ -152,6 +172,11 @@ ADVICE_KEYWORDS: Tuple[str, ...] = (
 #: PERFORMANCE triggers, architecture.md §8.3. "returns" is listed before the
 #: specific phrases; a performance question is redirected either way, so the
 #: order inside this tuple is presentation, not behaviour.
+#:
+#: This is deliberately *not* every number a fund page publishes. Size (AUM) and
+#: fund size were here and are now :data:`FACT_ATTRIBUTES`, because a size on a
+#: date is a stated attribute rather than a return, and the redirect told a
+#: questioner that the answer was in a PDF when the indexed page already had it.
 PERFORMANCE_KEYWORDS: Tuple[str, ...] = (
     "return",
     "returns",
@@ -171,8 +196,6 @@ PERFORMANCE_KEYWORDS: Tuple[str, ...] = (
     "portfolio",
     "holdings",
     "top ten holdings",
-    "aum",
-    "fund size",
     "asset allocation",
     "sector allocation",
 )
@@ -381,18 +404,24 @@ def route(
         )
 
     fact_type = detect_fact_type(question)
+    attribute = _matches(haystack, FACT_ATTRIBUTES)
     scheme_named = names_scheme(question)
 
     # 3. AMBIGUOUS: a fact question that names no scheme (Q5). Answering all
     # five from one question is the failure mode Q5 exists to prevent, so this
     # asks rather than guesses. Scheme-independent how-tos are exempt: there is
-    # no per-fund version of them to confuse.
-    if fact_type and not scheme_named and fact_type not in SCHEME_INDEPENDENT_FACT_TYPES:
+    # no per-fund version of them to confuse. A :data:`FACT_ATTRIBUTES` match
+    # asks too, because a size or a manager differs per scheme just as a minimum
+    # SIP does — with no ``fact_type`` there is nothing else that would catch it.
+    if not scheme_named and (
+        attribute is not None
+        or (fact_type and fact_type not in SCHEME_INDEPENDENT_FACT_TYPES)
+    ):
         return IntentResult(
             Intent(
                 category="AMBIGUOUS",
                 expected_fact_type=fact_type,
-                matched="no scheme named",
+                matched=attribute or "no scheme named",
                 names_scheme=False,
                 source_ids=source_ids,
             )
@@ -405,6 +434,20 @@ def route(
                 category="FACT",
                 expected_fact_type=fact_type,
                 matched=fact_type,
+                names_scheme=scheme_named,
+                source_ids=source_ids,
+            )
+        )
+    if attribute is not None:
+        # No fact type to filter on, so retrieval runs unfiltered and K12
+        # applies the floor alone. ``expected_fact_type=None`` is exactly the
+        # OUT_OF_SCOPE contract (see src.rag.relevance_gate.evaluate), so this
+        # reaches the same chunks a plain factual question always has.
+        return IntentResult(
+            Intent(
+                category="FACT",
+                expected_fact_type=None,
+                matched=attribute,
                 names_scheme=scheme_named,
                 source_ids=source_ids,
             )

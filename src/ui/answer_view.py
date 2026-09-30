@@ -31,10 +31,23 @@ from src.guardrails.messages import DISCLAIMER, FRESHNESS_PREFIX
 from src.query.pipeline import AnswerResponse
 
 _URL_RE = re.compile(r"https?://\S+")
+#: A markdown link whose target is a URL. Removed whole, before the bare-URL pass,
+#: so a model that writes ``[Source](https://...)`` does not leave ``[Source](``
+#: behind in the prose.
+_MD_LINK_RE = re.compile(r"\[[^\]]*\]\(\s*https?://[^)]*\)")
+#: The model's own citation label. Hard rule 3 tells it to end with the source
+#: link and models frequently label that link "Source:", so removing the URL
+#: alone used to strand the label and the answer rendered as
+#: "Source: Source: <url>". Once the URL is gone, any label still in the text is
+#: by definition orphaned, and ``render_answer`` supplies the authoritative one
+#: from chunk metadata (AD-3), so stripping it here cannot lose a citation.
+_ORPHAN_LABEL_RE = re.compile(
+    r"(?i)(?:\*\*|__)?[ \t]*sources?[ \t]*(?:\*\*|__)?[ \t]*:[ \t]*(?:\*\*|__)?"
+)
 
 
 def strip_urls(text: str) -> str:
-    """Remove URLs from model text so the citation line is the only link.
+    """Remove URLs and their orphaned labels from model text.
 
     Rule 3 of the system prompt tells the model to end with the source link, and
     the renderer separately recomputes the citation from chunk metadata
@@ -42,8 +55,16 @@ def strip_urls(text: str) -> str:
     E-1, so the model's copy is dropped and the metadata one is authoritative.
     This is also what makes a hallucinated URL impossible to display: it is
     stripped here, not merely ignored.
+
+    The label has to go with the link, not just the link itself: E-1 counts URLs
+    rather than labels, so a stranded "Source:" passed every check while reading
+    as a duplicated citation to the user.
     """
-    return _URL_RE.sub("", text or "").strip()
+    cleaned = _MD_LINK_RE.sub("", text or "")
+    cleaned = _URL_RE.sub("", cleaned)
+    cleaned = _ORPHAN_LABEL_RE.sub("", cleaned)
+    cleaned = "\n".join(line.rstrip() for line in cleaned.splitlines())
+    return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
 
 
 def render_answer(response: AnswerResponse) -> str:

@@ -129,11 +129,17 @@ PII_QUERIES: Tuple[str, ...] = (
 
 #: In-domain but absent. Each is a real attribute of a real registered fund that
 #: this corpus does not carry, so a correct system declines rather than invents.
+#:
+#: "What is the AUM or fund size of HDFC Balanced Advantage Fund?" used to be
+#: listed here on the assumption that a fund's size lives in the factsheet. It does
+#: not: all five pages carry "Fund size (AUM)", "Asset Under Management" and "Total
+#: AUM", and the chunk holding the Balanced Advantage figure scores 0.81, well above
+#: the floor. The entry only ever passed because the question hit the performance
+#: redirect and returned before the gate. Do not add it back.
 UNSUPPORTED_QUERIES: Tuple[str, ...] = (
     "What is the current NAV of HDFC Large Cap Fund Direct Growth?",
     "What are the top ten holdings and their weights in HDFC Small Cap Fund?",
     "What is the exit load on the Regular plan of HDFC Large Cap Fund?",
-    "What is the AUM or fund size of HDFC Balanced Advantage Fund?",
     "What is the average expense ratio across all five HDFC schemes?",
 )
 

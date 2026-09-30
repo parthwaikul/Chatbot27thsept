@@ -169,6 +169,39 @@ def test_strip_urls_leaves_prose_intact():
     assert strip_urls("It is 1.03%. https://x.in/a") == "It is 1.03%."
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("The AUM is INR 39,933 Cr.\nSource: https://x.in/a", "The AUM is INR 39,933 Cr."),
+        ("The AUM is INR 39,933 Cr. Source: https://x.in/a", "The AUM is INR 39,933 Cr."),
+        ("The AUM is INR 39,933 Cr.\n**Source:** https://x.in/a", "The AUM is INR 39,933 Cr."),
+        ("**Source:** https://x.in/a", ""),
+        ("The AUM is INR 39,933 Cr.\n[Source](https://x.in/a)", "The AUM is INR 39,933 Cr."),
+    ],
+)
+def test_strip_urls_takes_the_label_with_the_link(text, expected):
+    """Hard rule 3 only asks for the link, and models often label it themselves.
+
+    Removing the URL while leaving "Source:" behind rendered as
+    "Source: Source: <url>", because the renderer appends its own line from chunk
+    metadata (AD-3). E-1 counts URLs rather than labels, so the duplicate passed
+    every check while reading as a doubled citation to the user.
+    """
+    assert strip_urls(text) == expected
+
+
+def test_a_rendered_answer_carries_one_label_and_one_link():
+    """The regression that E-1 could not see, at the rendering boundary."""
+    response = AnswerResponse(
+        text="The AUM is INR 39,933 Cr.\nSource: https://groww.in/mutual-funds/x",
+        citation_url="https://groww.in/mutual-funds/x",
+        last_updated=f"{FRESHNESS_PREFIX}28 Sep 2026",
+    )
+    block = render_answer(response)
+    assert block.count("Source:") == 1
+    assert count_links(block) == 1
+
+
 def test_render_block_carries_the_disclaimer():
     response = AnswerResponse("x", "https://groww.in/a", f"{FRESHNESS_PREFIX}d")
     assert DISCLAIMER in render_block(response)
