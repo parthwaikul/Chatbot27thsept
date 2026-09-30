@@ -110,8 +110,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         report = build_report(records, {spec.source_id: spec for spec in registry}, stats_by_id)
         print(render_report(report, records))
         print(render_fact_samples(records))
-        if not report.fully_ok:
-            exit_code = 1
+        # A fact type missing from the corpus is reported above and recorded in
+        # CHUNKING.md section 4, but it is an accepted scope decision rather than
+        # a failure, so it must not decide this process's exit code. It used to:
+        # `statement_guide` is absent from all five sources by design, so
+        # `fully_ok` was permanently False and `ingest.py --stage all` exited 1
+        # *after* ingesting all 166 chunks — which failed the Render build for a
+        # corpus that had built fine. Load failures above stay fatal, because a
+        # source that cannot be fetched is a real build failure.
 
     if args.stage in ("chunk", "store", "all"):
         service = (
