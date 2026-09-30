@@ -35,6 +35,7 @@ from src.ui.chat import (
     render_turn,
     render_welcome,
     require_streamlit,
+    runtime_retriever,
     take_pending_question,
 )
 from src.ui.answer_view import count_links, render_answer
@@ -66,7 +67,10 @@ def main() -> None:
 
     with st.spinner("Looking up the sources…"):
         try:
-            response = answer(question)
+            # `runtime_retriever` is cached per process, so the store handle and
+            # the embedding graph are opened once and reused by every later
+            # question instead of rebuilt inside each `answer` call.
+            response = answer(question, retriever=runtime_retriever())
         except AnswerError as exc:
             st.error(f"I could not answer that: {exc}")
             return

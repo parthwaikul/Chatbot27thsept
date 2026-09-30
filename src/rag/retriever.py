@@ -6,8 +6,11 @@ the ranking itself:
 
 * **Same model on both sides.** The collection holds all-MiniLM-L6-v2 vectors, so
   a query embedded by anything else would score against the wrong geometry. The
-  service is injected, never rebuilt per call, which is also how architecture.md
-  D6 (one model instance per process) is honoured.
+  default service is therefore the FP32 ONNX graph of that same model, which
+  agrees with the PyTorch weights to float32 rounding without importing torch.
+  One instance per process (architecture.md D6) is the caller's job, not this
+  class's: ``src.ui.chat.runtime_retriever`` holds it behind
+  ``st.cache_resource``, so a question does not rebuild the graph.
 * **The score is trustworthy.** ``similarity`` is ``1 - distance`` from the cosine
   HNSW index, so the relevance gate in P4 can compare it against a floor chosen
   from a measured distribution rather than a guess.
@@ -24,7 +27,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 from src.config import Settings, load
 from src.ingest.models import FACT_TYPES
 from src.ingest.registry import SourceRegistry
-from src.rag.embeddings import EmbeddingService, build_embedding_service
+from src.rag.embeddings import EmbeddingService, build_query_embedding_service
 from src.rag.vector_store import VectorStore, VectorStoreError
 
 
@@ -68,7 +71,7 @@ class Retriever:
         settings: Optional[Settings] = None,
     ) -> None:
         self.settings = settings or load()
-        self.embeddings = embeddings or build_embedding_service(self.settings)
+        self.embeddings = embeddings or build_query_embedding_service(self.settings)
         self._schemes: Optional[Dict[str, str]] = None
         self._stored: Optional[Dict[str, str]] = None
         try:

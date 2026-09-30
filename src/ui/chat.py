@@ -25,7 +25,7 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 try:  # Streamlit is a P6 dependency, but this module must import without it.
     import streamlit as st
@@ -36,6 +36,7 @@ from src.config import Settings, load
 from src.eval.cases import COVERED_FACT_QUERIES, FactQuery
 from src.guardrails.messages import DISCLAIMER
 from src.query.pipeline import AnswerResponse
+from src.rag.retriever import Retriever
 from src.ui.answer_view import render_answer
 
 #: FR-15 fixes the count at exactly 3. Not a default: the docs say "exactly 3"
@@ -111,6 +112,29 @@ class CorpusStats:
             f"{self.schemes} schemes indexed · {self.chunks} chunks · "
             f"last ingested {self.last_ingested}"
         )
+
+
+def _build_runtime_retriever() -> Retriever:
+    """Open the store and the ONNX embedding graph once for this process."""
+    return Retriever(settings=load())
+
+
+#: architecture.md D6: one model instance per process.
+#:
+#: Streamlit reruns the whole script on every interaction and
+#: :func:`src.query.pipeline.answer` builds its own ``_Deps`` per call, so without
+#: this the retriever — and with it the ONNX session and the store handle — was
+#: rebuilt for every single question. ``st.cache_resource`` is the one cache that
+#: is per-process rather than per-session, which is exactly the lifetime D6 asks
+#: for, and it also keeps the first load off the critical path of later questions.
+#:
+#: Falls back to the bare function when Streamlit is absent so this module keeps
+#: importing outside a server, per the note at the top of the file.
+runtime_retriever: Callable[[], Retriever] = (
+    st.cache_resource(show_spinner=False)(_build_runtime_retriever)
+    if st is not None and hasattr(st, "cache_resource")
+    else _build_runtime_retriever
+)
 
 
 def corpus_stats(settings: Optional[Settings] = None) -> CorpusStats:
