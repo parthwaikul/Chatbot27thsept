@@ -53,7 +53,7 @@ Deliberately narrow, because a narrow corpus is auditable and a broad one is not
   different fees, and a user who meant one of those will be misled.
 - **Answerable fact types:** expense ratio, exit load, minimum SIP, ELSS lock-in,
   riskometer, benchmark. Six, not seven — see the gap below.
-- **Not in scope:** any other AMC, any other plan variant, returns, NAV, AUM,
+- **Not in scope:** any other AMC, any other plan variant, returns, NAV,
   holdings, tax computation, and portfolio-level questions.
 
 ## What it does
@@ -172,3 +172,35 @@ Q4 (freshness = ingestion timestamp), Q5 (ask which scheme), Q6 (under 6 s warm,
 measured at 4.0 s), Q8 (plan labelled in metadata). Still open: **Q7**, whether
 to publish a hosted link or record a ≤3-minute video, which is a
 submission-venue decision rather than a build one.
+
+
+## Source List
+
+The chatbot uses publicly available mutual fund information for the following HDFC Mutual Fund schemes:
+
+- HDFC Large Cap Fund
+- HDFC Flexi Cap Fund
+- HDFC ELSS Tax Saver
+- HDFC Small Cap Fund
+- HDFC Balanced Advantage Fund
+
+Detailed source URLs are available in [SOURCES.md](SOURCES.md).
+
+## Sample Q&A
+
+**Q: What is the fund size of HDFC Large Cap Fund Direct Growth?**  
+A: The fund size (AUM) is ₹39,933.36 Cr. The answer includes the source and the date on which the source information was last updated.
+
+**Q: What is the expense ratio of HDFC Large Cap Fund Direct Growth?**  
+A: FundFacts AI retrieves the relevant expense-ratio information from its indexed source corpus and provides the source with the answer.
+
+**Q: Should I invest in HDFC Large Cap Fund?**  
+A: I answer factual questions only, so I can't tell you whether to buy, sell, or hold a scheme, or which one is better for you. Facts such as expense ratio, exit load, minimum SIP, lock-in, riskometer, and benchmark are available from the sources used by the assistant.
+
+Additional examples are available in [SAMPLE_QA.md](SAMPLE_QA.md).
+
+## Disclaimer
+
+FundFacts AI is a **facts-only mutual fund FAQ assistant** intended for informational and educational purposes. It does not provide investment advice, recommendations, buy/sell/hold suggestions, portfolio advice, or predictions about fund performance. Users should verify important information from the cited source and consult an appropriately qualified professional before making investment decisions.
+
+See [DISCLAIMER.txt](DISCLAIMER.txt) for the complete disclaimer.
