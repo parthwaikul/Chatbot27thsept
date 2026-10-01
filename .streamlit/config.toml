@@ -1,0 +1,30 @@
+# Streamlit app configuration.
+#
+# Presentation only. Nothing here touches the retriever, the store, the embeddings
+# or the model — it sets the base theme and layout so the first paint is already
+# on-palette instead of flashing Streamlit's default colours before the CSS in
+# `src/ui/theme.py` loads. The custom properties in the stylesheet override these
+# values for everything it can reach, so this file is the floor, not the design.
+#
+# Deployment settings (the Render service, the build command, environment
+# variables) live outside the repository and are not touched by this file.
+
+[theme]
+# "light" is required for the emerald/teal palette: the sidebar and card surfaces
+# are light, and a dark base would invert the text colours underneath them.
+base = "light"
+primaryColor = "#0E8A5F"
+backgroundColor = "#F7F8F7"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#12211C"
+
+[client]
+# The app has no need for the deploy toolbar in a local visual check, and removing
+# it declutters the header without hiding any control the app itself draws.
+toolbarMode = "minimal"
+
+[server]
+# Chat messages replay on every rerun and Streamlit's own max-width is narrower
+# than the design intends; the layout constraint lives in CSS so it can be
+# responsive, which is why nothing is pinned here.
+headless = true

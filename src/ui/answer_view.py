@@ -25,7 +25,9 @@ rendering the token itself would leak the wire format into the product.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import urlparse
 
 from src.guardrails.messages import DISCLAIMER, FRESHNESS_PREFIX
 from src.query.pipeline import AnswerResponse
@@ -84,6 +86,59 @@ def render_answer(response: AnswerResponse) -> str:
         parts.append("Source: [citation unavailable]")
     parts.append(response.last_updated)
     return "\n".join(part for part in parts if part)
+
+
+@dataclass(frozen=True)
+class BlockParts:
+    """The answer body, its citation and its freshness line, kept apart."""
+
+    answer: str
+    citation_url: str
+    freshness: str
+    is_refusal: bool = False
+
+
+def split_block(response: AnswerResponse) -> BlockParts:
+    """Separate an answer's body, citation and freshness line.
+
+    :func:`render_answer` joins them into one string, which is right for ``eval.py``
+    and the notebook deliverable and wrong for a chat card: the product needs the
+    answer in a reading pane and the citation and date in a muted metadata row.
+    Rather than parse that string heuristically, this recomposes the three parts
+    from the same fields :func:`render_answer` reads, using the same
+    :func:`strip_urls` pass, so the two renderers cannot disagree.
+
+    The citation is ``response.citation_url`` unchanged. A refusal is passed
+    through as ``is_refusal`` with no citation, because its link is a different
+    kind of thing: an educational resource, or an official factsheet (FR-10,
+    FR-11), not a citation. E-1 still counts exactly one link on the answer path.
+    """
+    return BlockParts(
+        answer=strip_urls(response.text).strip(),
+        citation_url="" if response.is_refusal else (response.citation_url or ""),
+        freshness=(response.last_updated or "").strip(),
+        is_refusal=response.is_refusal,
+    )
+
+
+def source_label(url: str) -> str:
+    """A short, readable name for a citation's host, for the UI only.
+
+    "https://groww.in/mutual-funds/hdfc-small-cap" becomes "Groww" so the card can
+    read "Source: Groww" instead of printing a long raw URL. This is derived from
+    the citation the pipeline already chose, so it cannot introduce a source the
+    registry does not allow — the link still points at the exact ``url``.
+
+    Falls back to the host as-is when it cannot be prettified, and never returns an
+    empty string, because a citation with no visible name is worse than an ugly one.
+    """
+    host = (urlparse(url or "").hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    if not host:
+        return "Source page"
+    label = host.split(".")[0]
+    return label.capitalize() if label else host
 
 
 def render_block(response: AnswerResponse) -> str:

@@ -30,9 +30,14 @@ from src.ui.chat import (
     append_exchange,
     clear,
     init_state,
+    inject_theme,
     messages,
+    render_header,
+    render_input_note,
+    render_sidebar,
     render_transcript,
     render_turn,
+    render_user_bubble,
     render_welcome,
     require_streamlit,
     runtime_retriever,
@@ -43,27 +48,40 @@ from src.ui.answer_view import count_links, render_answer
 
 def main() -> None:
     require_streamlit()
+    # `set_page_config` must be the first Streamlit call in the script, so the
+    # theme and stylesheet are injected immediately after it and before anything
+    # is drawn. The page config carries the base colours too, so the first paint is
+    # already on-palette rather than flashing Streamlit's default red.
+    st.set_page_config(
+        page_title="FundFacts AI · Mutual Fund Facts",
+        page_icon="📈",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
     init_state()
-    st.set_page_config(page_title="HDFC scheme facts", page_icon="📄", layout="centered")
+    inject_theme()
 
-    if not messages():
-        render_welcome()
+    render_sidebar()
+
+    if messages():
+        render_header()
+        render_transcript()
+        st.button("New question", on_click=clear, key="new_question")
     else:
-        st.button("New question", on_click=clear)
+        render_welcome()
 
-    render_transcript()
-
-    # An example-button click arrives as a pending question, because the button
-    # and the text input are both "submit" events and the click must not be lost.
+    # A chip, a sidebar shortcut and the example buttons all submit through the
+    # same pending-question key, because a button and the text input are both
+    # "submit" events and a click must not be lost between them.
     pending = take_pending_question()
-    typed = st.chat_input("Ask a factual question")
+    typed = st.chat_input("Ask a factual question about a mutual fund…")
+    render_input_note()
 
     question = pending or typed
     if not question:
         return
 
-    with st.chat_message("user"):
-        st.markdown(question)
+    render_user_bubble(question)
 
     with st.spinner("Looking up the sources…"):
         try:
@@ -82,6 +100,10 @@ def main() -> None:
     # the running app rather than only in tests: a factual answer must render
     # exactly one link. A second link here would mean the model emitted a URL
     # that survived the strip, which is the failure AD-3 exists to prevent.
+    #
+    # The check reads `render_answer`, not the card markup, because that is the
+    # canonical plain-text rendering the eval harness counts. The card is built
+    # from the same citation field, so the two cannot disagree about the URL.
     if not response.is_refusal and count_links(render_answer(response)) != 1:
         st.warning("This answer did not render exactly one source link.")
 

@@ -51,14 +51,54 @@ class _Stub:
     captions: List[str] = field(default_factory=list)
     chat_messages: List[str] = field(default_factory=list)
     tables: List[str] = field(default_factory=list)
-    # ``pending_button`` is the id of a button that returns True on click, which
-    # is how an example click is simulated without a browser.
+    sidebars: List[str] = field(default_factory=list)
+    containers: List[Optional[str]] = field(default_factory=list)
+    # ``pending_button`` is the id of a button that returns True on click, which is
+    # how an example click is simulated without a browser.
     pending_button: Optional[str] = None
     chat_input_value: Optional[str] = None
 
-    def button(self, label, key=None, **kwargs):
-        self.buttons.append({"label": label, "key": key})
+    def button(
+        self,
+        label,
+        key=None,
+        help=None,
+        on_click=None,
+        args=(),
+        kwargs=None,
+        *,
+        type="secondary",
+        icon=None,
+        disabled=False,
+        use_container_width=None,
+        width="content",
+    ):
+        # The parameter list mirrors Streamlit 1.50's ``st.button`` exactly. If the
+        # UI passes a keyword this version does not support (as ``label_visibility``
+        # was), the call raises here instead of only crashing in a browser.
+        self.buttons.append(
+            {"label": label, "key": key, "args": list(args), "help": help, "icon": icon}
+        )
+        if key == self.pending_button and on_click is not None:
+            on_click(*(args or ()), **(kwargs or {}))
+            return True
         return key == self.pending_button
+
+    def container(
+        self,
+        *,
+        border=None,
+        key=None,
+        width="stretch",
+        height="content",
+        horizontal=False,
+        horizontal_alignment="left",
+        vertical_alignment="top",
+        gap=None,
+    ):
+        # Mirrors Streamlit 1.50's ``st.container`` (which emits ``st-key-<key>``).
+        self.containers.append(key)
+        return _Context(self)
 
     def link_button(self, label, url):
         self.links.append({"label": label, "url": url})
@@ -68,18 +108,24 @@ class _Stub:
         self.expanders.append(label)
         return _Context(self)
 
-    def markdown(self, body):  # noqa: F811 - intentionally shadows the list attr
+    def markdown(self, body, **kwargs):  # noqa: F811 - shadows the list attr
         self.markdown_lines.append(body)
 
     def caption(self, body):
         self.captions.append(body)
 
-    def chat_message(self, role):
+    def chat_message(self, role, **kwargs):
         self.chat_messages.append(role)
         return _Context(self)
 
     def columns(self, count):
         return [_Context(self) for _ in range(count)]
+
+    @property
+    def sidebar(self):
+        """Mirrors Streamlit, where ``st.sidebar`` is itself a context manager."""
+        self.sidebars.append("open")
+        return _Context(self)
 
     def __enter__(self):
         return self
@@ -93,7 +139,7 @@ def stub(monkeypatch):
     fake = _Stub()
     fake.markdown_lines = []  # type: ignore[attr-defined]
 
-    def _markdown(body):
+    def _markdown(body, **kwargs):
         fake.markdown_lines.append(body)
 
     fake.markdown = _markdown  # type: ignore[assignment]
@@ -261,7 +307,7 @@ def test_an_answer_renders_its_citation_as_a_link_button(stub):
     chat.render_turn(response)
     assert stub.links == [
         {
-            "label": "Open source page",
+            "label": "Open source page ↗",
             "url": "https://groww.in/mutual-funds/hdfc-large-cap-fund-direct-growth",
         }
     ]
@@ -275,7 +321,7 @@ def test_a_refusal_links_to_its_educational_page_and_cites_nothing(stub):
         text="I answer factual questions only.",
     )
     chat.render_turn(response)
-    assert stub.links == [{"label": "Learn more", "url": "https://investor.sebi.gov.in/"}]
+    assert stub.links == [{"label": "Learn more ↗", "url": "https://investor.sebi.gov.in/"}]
 
 
 def test_a_performance_refusal_is_labelled_as_a_factsheet(stub):
@@ -287,7 +333,7 @@ def test_a_performance_refusal_is_labelled_as_a_factsheet(stub):
         text="Returns are in the official factsheet.",
     )
     chat.render_turn(response)
-    assert stub.links[0]["label"] == "Official factsheet"
+    assert stub.links[0]["label"] == "Official factsheet ↗"
 
 
 def test_an_ambiguous_refusal_lists_the_schemes(stub):
@@ -340,6 +386,177 @@ def test_the_transcript_replays_every_turn(stub):
     chat.append_exchange("q2", _response(path="advice", citation_url=None))
     chat.render_transcript()
     assert stub.chat_messages == ["user", "assistant", "user", "assistant"]
+
+
+# -- presentation-only safety: the redesign may not add or alter a fact -------
+
+
+def test_emphasize_numbers_cannot_change_the_visible_text():
+    """The emphasised styling must not derive, round or invent a value.
+
+    Stripping the span tags has to reproduce the input byte-for-byte, which is
+    what makes it safe to run over a factual answer: a formatter that rebuilt the
+    number from parsed parts could round it, and one that inferred a unit could
+    invent one. This one only wraps what was already there.
+    """
+    text = (
+        "The AUM is ₹39,933.36 Cr and the expense ratio is 1.03%; the minimum SIP "
+        "is ₹500, with 12,345 units and a 5.5 year track record."
+    )
+    styled = chat.emphasize_numbers(text)
+    assert chat.emphasize_numbers("") == ""
+    # Remove exactly the wrapper the function adds and the text is unchanged.
+    assert styled.replace('<span class="ff-num">', "").replace("</span>", "") == text
+
+
+def test_emphasize_numbers_highlights_real_values():
+    styled = chat.emphasize_numbers("The expense ratio is 1.03%.")
+    assert '<span class="ff-num">1.03%</span>' in styled
+    styled_rupees = chat.emphasize_numbers("The AUM is ₹39,933.36 Cr.")
+    assert '<span class="ff-num">₹39,933.36 Cr</span>' in styled_rupees
+    assert '<span class="ff-num">₹500</span>' in chat.emphasize_numbers("The minimum SIP is ₹500.")
+
+
+def test_emphasize_numbers_leaves_a_date_alone():
+    """Freshness and dates are not figures to shout about."""
+    assert chat.emphasize_numbers("Last updated 30 Sep 2026") == "Last updated 30 Sep 2026"
+
+
+def test_a_chip_or_sidebar_click_queues_its_question(stub):
+    """Both shortcut surfaces submit through the same pending-question key."""
+    for item in chat.QUICK_QUESTIONS:
+        chat.submit_question(chat.quick_question_text(item))
+    assert stub.session_state[chat.EXAMPLE_PICK_KEY] == chat.quick_question_text(
+        chat.QUICK_QUESTIONS[-1]
+    )
+
+
+def test_every_chip_is_a_real_button_with_a_native_icon(stub):
+    """Streamlit 1.50 buttons cannot take ``label_visibility`` or inline SVG.
+
+    Each chip must therefore be a genuine ``st.button`` carrying a Material icon
+    string, laid out inside the keyed row the stylesheet targets.
+    """
+    chat.render_header()
+    chips = [b for b in stub.buttons if str(b["key"]).startswith("chip::")]
+    assert len(chips) == len(chat.QUICK_QUESTIONS)
+    for button in chips:
+        assert button["icon"].startswith(":material/"), button
+    assert "ff_chiprow" in stub.containers
+
+
+def test_every_quick_question_is_one_the_corpus_answers():
+    """A shortcut that declines would make the product look broken on click."""
+    from src.eval.cases import COVERED_FACT_QUERIES
+
+    covered = {case.fact_type for case in COVERED_FACT_QUERIES}
+    for item in chat.QUICK_QUESTIONS:
+        question = chat.quick_question_text(item)
+        assert question.endswith("?"), question
+        fact_type = item.get("fact_type")
+        if fact_type is not None:
+            assert fact_type in covered, fact_type
+
+
+def test_the_fund_manager_shortcut_uses_the_agreed_question():
+    item = next(q for q in chat.QUICK_QUESTIONS if q["label"] == "Fund manager")
+    assert chat.quick_question_text(item) == (
+        "Who is the fund manager for HDFC Large Cap Fund Direct Growth?"
+    )
+
+
+def test_the_redesign_does_not_add_invented_facts_to_the_markup():
+    """The mockup's illustrative figures must not appear anywhere in the UI layer.
+
+    The Stitch reference carries trend, rank and tenure numbers the backend does
+    not produce. None of them may be spelled into the presentation.
+    """
+    import inspect
+
+    from src.ui import chat as chat_module
+    from src.ui import icons as icons_module
+    from src.ui import theme as theme_module
+
+    source = (
+        inspect.getsource(chat_module)
+        + inspect.getsource(theme_module)
+        + inspect.getsource(icons_module)
+    ).lower()
+    for invented in (
+        "3-month",
+        "3 month",
+        "percentage growth",
+        "category rank",
+        "direct plan share",
+        "tenure",
+        "total experience",
+        "amfi scheme code",
+    ):
+        assert invented not in source, f"invented fact {invented!r} in the UI layer"
+
+
+def test_the_answer_card_links_the_exact_citation_it_was_given(stub, monkeypatch):
+    """The pretty label must not change the href."""
+    response = _response(
+        citation_url="https://groww.in/mutual-funds/hdfc-large-cap-fund-direct-growth"
+    )
+    chat.render_answer_card(response)
+    joined = " ".join(stub.markdown_lines)
+    assert "Source: Groww" in joined
+    assert (
+        "href='https://groww.in/mutual-funds/hdfc-large-cap-fund-direct-growth'"
+        in joined
+    )
+
+
+def test_the_answer_card_keeps_the_freshness_line(stub):
+    response = _response(last_updated="Last updated from sources: 30 Sep 2026")
+    chat.render_answer_card(response)
+    assert any("Last updated from sources: 30 Sep 2026" in line for line in stub.markdown_lines)
+
+
+def test_the_answer_card_carries_no_source_line_for_a_refusal(stub):
+    """E-1 counts one link on the answer path; a refusal must add none here."""
+    response = _response(path="pii", citation_url=None, text="I can't help with that.")
+    chat.render_answer_card(response)
+    joined = " ".join(stub.markdown_lines)
+    assert "href=" not in joined
+    assert "Source: citation unavailable" not in joined
+
+
+def test_the_stylesheet_hides_no_interactive_control():
+    """A styling rule that set display:none on a control could break the app.
+
+    Streamlit's markup is not a public API, so the stylesheet is coupled to it.
+    This pins the one failure mode that would remove functionality rather than
+    merely look wrong: hiding something the user has to click.
+    """
+    from src.ui.theme import stylesheet
+
+    css = stylesheet().lower()
+    for control in (
+        "stchatinput",
+        "stbutton",
+        "stlinkbutton",
+        "stexpander",
+        "stchatmessage",
+    ):
+        # No display:none rule may name a control. The `#MainMenu, footer` rule is
+        # the one legitimate hide and names neither.
+        for rule in css.split("}"):
+            if "display: none" in rule or "display:none" in rule:
+                assert control not in rule, f"{control} is hidden by a CSS rule"
+
+
+def test_sidebar_and_header_render_their_landmarks(stub):
+    chat.render_sidebar()
+    chat.render_header()
+    sidebar_html = " ".join(stub.markdown_lines)
+    assert "FundFacts AI" in sidebar_html
+    assert "Facts-only" in sidebar_html
+    assert "Popular Questions" in sidebar_html
+    assert "Ask <em>factual</em> questions about mutual funds" in sidebar_html
+    assert chat.TRUST_BADGE in sidebar_html
 
 
 # -- AD-5: the UI must not re-derive the pipeline's decisions -----------------
